@@ -51,6 +51,7 @@ public class CachedResource implements Resource {
     private final String lastModifiedDateString;
     private final ETag eTag;
     private final String name;
+    private volatile long nextMaxAgeCheck;
 
     public CachedResource(final CachingResourceManager cachingResourceManager, final Resource underlyingResource, final String path) {
         this.cachingResourceManager = cachingResourceManager;
@@ -71,6 +72,11 @@ public class CachedResource implements Resource {
             this.path = path;
         }
         this.cacheKey = underlyingResource.getCacheKey();
+        if (cachingResourceManager.getMaxAge() > 0) {
+            nextMaxAgeCheck = System.currentTimeMillis() + cachingResourceManager.getMaxAge();
+        } else {
+            nextMaxAgeCheck = -1;
+        }
     }
 
     @Override
@@ -111,6 +117,23 @@ public class CachedResource implements Resource {
     @Override
     public String getContentType(final MimeMappings mimeMappings) {
         return underlyingResource.getContentType(mimeMappings);
+    }
+
+    public void invalidate() {
+        cachingResourceManager.getDataCache().remove(cacheKey);
+    }
+
+    public boolean checkStillValid() {
+        if (nextMaxAgeCheck > 0) {
+            long time = System.currentTimeMillis();
+            if (time > nextMaxAgeCheck) {
+                nextMaxAgeCheck = time + cachingResourceManager.getMaxAge();
+                if (!underlyingResource.getLastModified().equals(lastModifiedDate)) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     @Override
